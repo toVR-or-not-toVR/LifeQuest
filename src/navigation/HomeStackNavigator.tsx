@@ -3,12 +3,14 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { HomeScreen } from '../screens/HomeScreen';
 import { QuestDetailScreen } from '../screens/QuestDetailScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { BuddyScreen } from '../screens/BuddyScreen';
 import { Colors } from '../constants/colors';
 
 export type HomeStackParamList = {
   Home: undefined;
   QuestDetail: { questId: string };
   Notifications: undefined;
+  Buddy: undefined;
 };
 
 const Stack = createStackNavigator<HomeStackParamList>();
@@ -24,6 +26,7 @@ export function HomeStackNavigator() {
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="QuestDetail" component={QuestDetailScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Buddy" component={BuddyScreen} />
     </Stack.Navigator>
   );
 }

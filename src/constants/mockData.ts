@@ -12,6 +12,8 @@ export const INITIAL_USER: User = {
   lastActiveDate: new Date().toISOString(),
   totalQuestsCompleted: 0,
   badges: [],
+  buddyMascotId: 'owl',
+  buddyEquipped: {},
 };
 
 export const SAMPLE_QUESTS: Quest[] = [
@@ -21,6 +23,7 @@ export const SAMPLE_QUESTS: Quest[] = [
     description: 'Build a consistent morning workout habit',
     category: 'health',
     color: Colors.categoryColors.health,
+    mapIcon: '🏋️',
     mapPosition: { x: 400, y: 1250 },
     createdAt: new Date().toISOString(),
     milestones: [
@@ -54,6 +57,7 @@ export const SAMPLE_QUESTS: Quest[] = [
     description: 'Reach conversational level in Spanish',
     category: 'education',
     color: Colors.categoryColors.education,
+    mapIcon: '📚',
     mapPosition: { x: 200, y: 1050 },
     createdAt: new Date().toISOString(),
     milestones: [

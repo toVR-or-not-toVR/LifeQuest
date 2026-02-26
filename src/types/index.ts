@@ -34,6 +34,7 @@ export interface Quest {
   completedAt?: string;
   mapPosition: { x: number; y: number };
   color: string;
+  mapIcon?: string; // emoji chosen from bottom panel
 }
 
 export interface User {
@@ -47,6 +48,12 @@ export interface User {
   lastActiveDate: string;
   totalQuestsCompleted: number;
   badges: Badge[];
+  buddyMascotId: string;
+  buddyEquipped: {
+    hat?: string;
+    outfit?: string;
+    accessory?: string;
+  };
 }
 
 export interface Message {
@@ -85,4 +92,6 @@ export type AppAction =
   | { type: 'ADD_NOTIFICATION'; payload: Notification }
   | { type: 'MARK_NOTIFICATIONS_READ' }
   | { type: 'UNLOCK_BADGE'; payload: Badge }
-  | { type: 'CHECK_STREAK' };
+  | { type: 'CHECK_STREAK' }
+  | { type: 'SET_BUDDY_MASCOT'; payload: { mascotId: string } }
+  | { type: 'EQUIP_BUDDY_ITEM'; payload: { slot: 'hat' | 'outfit' | 'accessory'; itemId: string | undefined } };

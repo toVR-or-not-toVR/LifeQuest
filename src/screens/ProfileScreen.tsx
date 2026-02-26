@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenWrapper } from '../components/common/ScreenWrapper';
 import { Card } from '../components/common/Card';
 import { XPBar } from '../components/common/XPBar';
@@ -11,9 +12,15 @@ import { useAppContext } from '../context/AppContext';
 import { getLevelTitle } from '../utils/xpUtils';
 import { ALL_BADGES } from '../constants/mockData';
 
+const MASCOTS: Record<string, string> = {
+  owl: '🦉', fox: '🦊', cat: '🐱', capybara: '🦫', panda: '🐼',
+};
+
 export function ProfileScreen() {
+  const navigation = useNavigation<any>();
   const { state } = useAppContext();
   const { user, quests } = state;
+  const mascotEmoji = MASCOTS[user.buddyMascotId] ?? '🦉';
   const totalMilestones = quests.reduce(
     (sum, q) => sum + q.milestones.filter((m) => m.completed).length,
     0
@@ -40,6 +47,20 @@ export function ProfileScreen() {
         <Card style={styles.xpCard} elevated>
           <XPBar xp={user.xp} level={user.level} xpToNextLevel={user.xpToNextLevel} animated showLabels />
         </Card>
+
+        {/* Buddy button */}
+        <TouchableOpacity
+          style={styles.buddyBtn}
+          onPress={() => navigation.navigate('Buddy')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.buddyBtnEmoji}>{mascotEmoji}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.buddyBtnTitle}>Мой питомец</Text>
+            <Text style={styles.buddyBtnSub}>Снаряди и кастомизируй</Text>
+          </View>
+          <Text style={styles.buddyArrow}>›</Text>
+        </TouchableOpacity>
 
         {/* Stats grid */}
         <View style={styles.statsGrid}>
@@ -128,6 +149,34 @@ const styles = StyleSheet.create({
     marginHorizontal: Theme.spacing.md,
     marginTop: -Theme.spacing.lg,
     marginBottom: Theme.spacing.md,
+  },
+  buddyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.md,
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
+    backgroundColor: Colors.card,
+    borderRadius: Theme.borderRadius.lg,
+    padding: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '44',
+  },
+  buddyBtnEmoji: { fontSize: 36 },
+  buddyBtnTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.bold,
+    color: Colors.textPrimary,
+  },
+  buddyBtnSub: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  buddyArrow: {
+    fontSize: 24,
+    color: Colors.textMuted,
+    fontWeight: Theme.fontWeight.bold,
   },
   statsGrid: {
     flexDirection: 'row',

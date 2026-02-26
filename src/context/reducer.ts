@@ -1,5 +1,5 @@
 import { AppState, AppAction, Notification } from '../types';
-import { calculateLevel, xpForLevel, xpToNextLevel } from '../utils/xpUtils';
+import { calculateLevel, xpToNextLevel } from '../utils/xpUtils';
 import { isQuestComplete } from '../utils/questUtils';
 import { uuid } from '../utils/uuid';
 import { todayISO, calculateStreak } from '../utils/dateUtils';
@@ -264,6 +264,26 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         notifications: [...newNotifs, ...state.notifications],
       };
     }
+
+    // ── Buddy mascot ──────────────────────────────────────────────────────
+    case 'SET_BUDDY_MASCOT':
+      return {
+        ...state,
+        user: { ...state.user, buddyMascotId: action.payload.mascotId },
+      };
+
+    // ── Equip buddy item ──────────────────────────────────────────────────
+    case 'EQUIP_BUDDY_ITEM':
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          buddyEquipped: {
+            ...state.user.buddyEquipped,
+            [action.payload.slot]: action.payload.itemId,
+          },
+        },
+      };
 
     default:
       return state;
