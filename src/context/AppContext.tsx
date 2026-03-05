@@ -9,11 +9,12 @@ import React, {
 import { AppState, AppAction } from '../types';
 import { appReducer } from './reducer';
 import { INITIAL_STATE } from '../constants/mockData';
-import { saveState, loadState } from '../services/storageService';
+import { saveState, loadState, clearState } from '../services/storageService';
 
 interface AppContextValue {
   state: AppState;
   dispatch: React.Dispatch<AppAction>;
+  resetState: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -47,8 +48,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [isHydrated.current]);
 
+  async function resetState() {
+    await clearState();
+    dispatch({ type: 'LOAD_STATE', payload: INITIAL_STATE });
+  }
+
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={{ state, dispatch, resetState }}>
       {children}
     </AppContext.Provider>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { ScreenWrapper } from '../components/common/ScreenWrapper';
@@ -18,7 +18,18 @@ const MASCOTS: Record<string, string> = {
 
 export function ProfileScreen() {
   const navigation = useNavigation<any>();
-  const { state } = useAppContext();
+  const { state, resetState } = useAppContext();
+
+  function handleReset() {
+    Alert.alert(
+      'Сбросить прогресс?',
+      'Все квесты, XP и достижения будут удалены. Это нельзя отменить.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        { text: 'Сбросить', style: 'destructive', onPress: () => resetState() },
+      ]
+    );
+  }
   const { user, quests } = state;
   const mascotEmoji = MASCOTS[user.buddyMascotId] ?? '🦉';
   const totalMilestones = quests.reduce(
@@ -94,6 +105,10 @@ export function ProfileScreen() {
             );
           })}
         </View>
+
+        <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.7}>
+          <Text style={styles.resetBtnText}>🗑️ Сбросить прогресс</Text>
+        </TouchableOpacity>
 
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -205,5 +220,19 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingHorizontal: Theme.spacing.md,
     gap: Theme.spacing.md,
+  },
+  resetBtn: {
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.xl,
+    paddingVertical: 12,
+    borderRadius: Theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+    alignItems: 'center',
+  },
+  resetBtnText: {
+    fontSize: Theme.fontSize.sm,
+    color: Colors.danger,
+    fontWeight: Theme.fontWeight.semibold,
   },
 });
