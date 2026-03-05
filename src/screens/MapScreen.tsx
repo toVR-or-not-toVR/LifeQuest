@@ -31,6 +31,11 @@ const SLOT_POSITIONS = [
   [0.80, 0.86],
 ];
 
+// ── Mascot emoji map ───────────────────────────────────────────────────────
+const MASCOT_EMOJI: Record<string, string> = {
+  owl: '🦉', fox: '🦊', cat: '🐱', capybara: '🦫', panda: '🐼',
+};
+
 // ── Bottom panel icon data ─────────────────────────────────────────────────
 type MapIconItem = { id: string; emoji: string; name: string };
 type MapIconCategory = { id: string; label: string; tabIcon: string; items: MapIconItem[] };
@@ -134,13 +139,17 @@ function sampleBezier(
 // ── Component ──────────────────────────────────────────────────────────────
 export function MapScreen() {
   const navigation = useNavigation<any>();
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const { width } = useWindowDimensions();
   const quests = state.quests.slice(0, 6);
 
   const [mapHeight, setMapHeight] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [selectedIcon, setSelectedIcon] = useState<MapIconItem | null>(null);
+  // Which quest is focused for icon assignment
+  const [targetQuestId, setTargetQuestId] = useState<string | null>(null);
+
+  const petEmoji = MASCOT_EMOJI[state.user.buddyMascotId] ?? '🦉';
 
   const onMapLayout = (e: LayoutChangeEvent) =>
     setMapHeight(e.nativeEvent.layout.height);
@@ -153,7 +162,52 @@ export function MapScreen() {
     [width, mapHeight]
   );
 
+  // ── Compute pet position: last-completed milestone across all quests ──────
+  const petDot = useMemo<{ x: number; y: number } | null>(() => {
+    if (mapHeight === 0 || slots.length === 0) return null;
+    let best: { x: number; y: number } | null = null;
+    let bestDate = '';
+    quests.forEach((quest, i) => {
+      if (!slots[i]) return;
+      const completed = quest.milestones.filter((m) => m.completed);
+      if (completed.length === 0) return;
+      const sorted = [...completed].sort((a, b) =>
+        (b.completedAt ?? '').localeCompare(a.completedAt ?? '')
+      );
+      const lastDate = sorted[0]?.completedAt ?? '';
+      if (!lastDate || lastDate <= bestDate) return;
+      bestDate = lastDate;
+      const { x: ix, y: iy } = slots[i];
+      const { cx: cpx, cy: cpy } = getCtrl(centerX, centerY, ix, iy);
+      const dots = sampleBezier(quest.milestones.length, centerX, centerY, cpx, cpy, ix, iy);
+      const dot = dots[completed.length - 1];
+      if (dot) best = dot;
+    });
+    return best;
+  }, [quests, slots, mapHeight, centerX, centerY]);
+
   const currentItems = ICON_CATEGORIES[activeTab].items;
+  const targetQuest = quests.find((q) => q.id === targetQuestId) ?? null;
+
+  function handleApplyIcon() {
+    if (!selectedIcon || !targetQuestId) return;
+    dispatch({ type: 'UPDATE_QUEST_ICON', payload: { questId: targetQuestId, icon: selectedIcon.emoji } });
+    setSelectedIcon(null);
+    setTargetQuestId(null);
+  }
+
+  // Icons to show in grid: quest's suggestedAssets at top when quest focused, else category items
+  const panelItems: MapIconItem[] = useMemo(() => {
+    if (targetQuest?.suggestedAssets && targetQuest.suggestedAssets.length > 0) {
+      const suggested = targetQuest.suggestedAssets.map((e, idx) => ({
+        id: `suggested-${idx}`,
+        emoji: e,
+        name: 'AI ✨',
+      }));
+      return [...suggested, ...currentItems];
+    }
+    return currentItems;
+  }, [targetQuest, currentItems]);
 
   return (
     <ScreenWrapper>
@@ -237,6 +291,13 @@ export function MapScreen() {
               })}
             </Svg>
 
+            {/* Pet mascot at last completed milestone */}
+            {petDot && (
+              <Text style={[styles.petEmoji, { left: petDot.x - 12, top: petDot.y - 20 }]}>
+                {petEmoji}
+              </Text>
+            )}
+
             {/* START island */}
             <View style={[styles.startWrapper, { left: centerX - START_R, top: centerY - START_R }]}>
               <View style={styles.startBase}>
@@ -252,19 +313,33 @@ export function MapScreen() {
               if (!slots[i]) return null;
               const { x: ix, y: iy } = slots[i];
               const allDone = quest.milestones.every((m) => m.completed);
+              const isFocused = targetQuestId === quest.id;
               const icon = quest.mapIcon || getCategoryEmoji(quest.category);
               return (
                 <TouchableOpacity
                   key={quest.id}
-                  onPress={() => navigation.navigate('QuestDetail', { questId: quest.id })}
-                  style={[styles.islandWrapper, { left: ix - ISLAND_R, top: iy - ISLAND_R }]}
+                  onPress={() => {
+                    if (selectedIcon) {
+                      // icon-assignment mode: toggle target quest
+                      setTargetQuestId(isFocused ? null : quest.id);
+                    } else {
+                      navigation.navigate('QuestDetail', { questId: quest.id });
+                    }
+                  }}
+                  style={[
+                    styles.islandWrapper,
+                    { left: ix - ISLAND_R, top: iy - ISLAND_R },
+                  ]}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.islandBase}>
+                  <View style={[styles.islandBase, isFocused && styles.islandFocused]}>
                     <View style={[styles.islandSurface, allDone && styles.islandDone]}>
                       <Text style={styles.islandEmoji}>{icon}</Text>
                     </View>
                   </View>
+                  {quest.assetLocked && (
+                    <Text style={styles.lockBadge}>🔒</Text>
+                  )}
                   <Text style={styles.islandName} numberOfLines={1}>{quest.title}</Text>
                 </TouchableOpacity>
               );
@@ -272,7 +347,7 @@ export function MapScreen() {
 
             {quests.length === 0 && (
               <View style={[styles.emptyHint, { left: centerX - 95, top: centerY + START_R + 14 }]}>
-                <Text style={styles.emptyHintText}>Выбери иконку ниже ↓</Text>
+                <Text style={styles.emptyHintText}>Создай квест и он появится на карте ✨</Text>
               </View>
             )}
           </>
@@ -309,7 +384,7 @@ export function MapScreen() {
           contentContainerStyle={styles.iconGrid}
           nestedScrollEnabled
         >
-          {currentItems.map((item) => {
+          {panelItems.map((item) => {
             const sel = selectedIcon?.id === item.id;
             return (
               <TouchableOpacity
@@ -327,16 +402,46 @@ export function MapScreen() {
           })}
         </ScrollView>
 
-        {/* Add button */}
-        {selectedIcon && (
+        {/* Action bar: icon selected → pick a quest to apply */}
+        {selectedIcon && quests.length > 0 && (
+          <View style={styles.actionBar}>
+            <Text style={styles.actionBarLabel}>
+              {targetQuestId ? `Применить ${selectedIcon.emoji} к:` : `Выбери квест для ${selectedIcon.emoji}:`}
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.questChips}>
+              {quests.map((q) => {
+                const focused = targetQuestId === q.id;
+                return (
+                  <TouchableOpacity
+                    key={q.id}
+                    onPress={() => setTargetQuestId(focused ? null : q.id)}
+                    style={[styles.questChip, focused && styles.questChipActive, q.assetLocked && styles.questChipLocked]}
+                    disabled={q.assetLocked === true}
+                  >
+                    <Text style={styles.questChipEmoji}>{q.mapIcon || getCategoryEmoji(q.category)}</Text>
+                    <Text style={[styles.questChipName, focused && styles.questChipNameActive]} numberOfLines={1}>
+                      {q.assetLocked ? `${q.title} 🔒` : q.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {targetQuestId && (
+              <TouchableOpacity style={styles.applyBtn} onPress={handleApplyIcon} activeOpacity={0.85}>
+                <Text style={styles.applyBtnText}>Применить {selectedIcon.emoji}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* No quests: go create one */}
+        {selectedIcon && quests.length === 0 && (
           <TouchableOpacity
-            style={styles.addBtn}
+            style={styles.applyBtn}
             onPress={() => navigation.navigate('Create' as never)}
             activeOpacity={0.85}
           >
-            <Text style={styles.addBtnText}>
-              Добавить {selectedIcon.emoji} на карту
-            </Text>
+            <Text style={styles.applyBtnText}>Создать квест с {selectedIcon.emoji}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -346,6 +451,15 @@ export function MapScreen() {
 
 const styles = StyleSheet.create({
   mapArea: { flex: 1, overflow: 'hidden' },
+
+  petEmoji: {
+    position: 'absolute',
+    fontSize: 22,
+    zIndex: 20,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
 
   // START island
   startWrapper: { position: 'absolute', width: START_R * 2, alignItems: 'center' },
@@ -374,12 +488,20 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4, shadowRadius: 6, elevation: 10,
   },
+  islandFocused: {
+    borderWidth: 3, borderColor: Colors.gold,
+    shadowColor: Colors.gold, shadowOpacity: 0.8, shadowRadius: 10,
+  },
   islandSurface: {
     width: ISLAND_TOP_R * 2, height: ISLAND_TOP_R * 2, borderRadius: ISLAND_TOP_R,
     backgroundColor: '#F2E0B0', alignItems: 'center', justifyContent: 'center',
   },
   islandDone: { backgroundColor: '#B8E890' },
   islandEmoji: { fontSize: 26 },
+  lockBadge: {
+    position: 'absolute', top: -4, right: -4,
+    fontSize: 13, zIndex: 5,
+  },
   islandName: {
     marginTop: 5, fontSize: 10, fontWeight: '700', color: 'white', textAlign: 'center',
     maxWidth: ISLAND_R * 2 + 12,
@@ -397,7 +519,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     paddingTop: 8, paddingBottom: Theme.spacing.md,
-    maxHeight: 290,
+    maxHeight: 310,
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.2, shadowRadius: 8, elevation: 12,
   },
@@ -428,10 +550,26 @@ const styles = StyleSheet.create({
   iconEmoji: { fontSize: 28 },
   iconName: { marginTop: 3, fontSize: 10, color: Colors.textSecondary, fontWeight: '600', textAlign: 'center' },
 
-  addBtn: {
-    marginHorizontal: Theme.spacing.md, marginTop: 8,
-    backgroundColor: Colors.primary, borderRadius: Theme.borderRadius.pill,
-    paddingVertical: 12, alignItems: 'center',
+  // Action bar
+  actionBar: { paddingHorizontal: Theme.spacing.md, paddingTop: 8, gap: 6 },
+  actionBarLabel: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
+  questChips: { gap: 8, paddingBottom: 4 },
+  questChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7,
+    backgroundColor: Colors.cardLight, borderRadius: Theme.borderRadius.pill,
+    borderWidth: 1.5, borderColor: Colors.border,
   },
-  addBtnText: { color: '#0D1B2A', fontSize: Theme.fontSize.md, fontWeight: '800' },
+  questChipActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '20' },
+  questChipLocked: { opacity: 0.45 },
+  questChipEmoji: { fontSize: 14 },
+  questChipName: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary, maxWidth: 90 },
+  questChipNameActive: { color: Colors.gold },
+
+  applyBtn: {
+    marginHorizontal: Theme.spacing.md, marginTop: 6,
+    backgroundColor: Colors.primary, borderRadius: Theme.borderRadius.pill,
+    paddingVertical: 11, alignItems: 'center',
+  },
+  applyBtnText: { color: '#0D1B2A', fontSize: Theme.fontSize.md, fontWeight: '800' },
 });

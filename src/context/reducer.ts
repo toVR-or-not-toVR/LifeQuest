@@ -285,6 +285,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         },
       };
 
+    // ── Update quest island icon (max 1 user change) ───────────────────────
+    case 'UPDATE_QUEST_ICON': {
+      const { questId, icon } = action.payload;
+      return {
+        ...state,
+        quests: state.quests.map((q) => {
+          if (q.id !== questId) return q;
+          if (q.assetLocked) return q;
+          const changes = (q.assetChanges ?? 0) + 1;
+          return { ...q, mapIcon: icon, assetChanges: changes, assetLocked: changes >= 1 };
+        }),
+      };
+    }
+
     default:
       return state;
   }

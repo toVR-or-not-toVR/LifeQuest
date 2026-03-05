@@ -34,7 +34,10 @@ export interface Quest {
   completedAt?: string;
   mapPosition: { x: number; y: number };
   color: string;
-  mapIcon?: string; // emoji chosen from bottom panel
+  mapIcon?: string;          // current displayed icon
+  suggestedAssets?: string[]; // Gemini-generated asset options
+  assetChanges?: number;     // times user has changed the icon
+  assetLocked?: boolean;     // true after 1 user change
 }
 
 export interface User {
@@ -94,4 +97,5 @@ export type AppAction =
   | { type: 'UNLOCK_BADGE'; payload: Badge }
   | { type: 'CHECK_STREAK' }
   | { type: 'SET_BUDDY_MASCOT'; payload: { mascotId: string } }
-  | { type: 'EQUIP_BUDDY_ITEM'; payload: { slot: 'hat' | 'outfit' | 'accessory'; itemId: string | undefined } };
+  | { type: 'EQUIP_BUDDY_ITEM'; payload: { slot: 'hat' | 'outfit' | 'accessory'; itemId: string | undefined } }
+  | { type: 'UPDATE_QUEST_ICON'; payload: { questId: string; icon: string } };

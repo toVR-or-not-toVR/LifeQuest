@@ -26,7 +26,7 @@ import {
   generateMapPosition,
   getQuestColor,
 } from '../utils/questUtils';
-import { generateQuestMilestones } from '../services/aiService';
+import { generateQuestMilestones, generateIslandAssets } from '../services/aiService';
 import { uuid } from '../utils/uuid';
 
 const CATEGORIES: QuestCategory[] = [
@@ -40,13 +40,18 @@ export function CreateQuestScreen() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<QuestCategory>('personal');
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [suggestedAssets, setSuggestedAssets] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
 
   async function handleGenerate() {
     if (!title.trim()) return;
     setGenerating(true);
-    const generated = await generateQuestMilestones(title.trim(), category);
+    const [generated, assets] = await Promise.all([
+      generateQuestMilestones(title.trim(), category),
+      generateIslandAssets(title.trim(), category),
+    ]);
     setMilestones(generated);
+    setSuggestedAssets(assets);
     setGenerating(false);
   }
 
@@ -76,6 +81,10 @@ export function CreateQuestScreen() {
         createdAt: new Date().toISOString(),
         mapPosition: generateMapPosition(state.quests),
         color: getQuestColor(category),
+        mapIcon: suggestedAssets[0] || getCategoryEmoji(category),
+        suggestedAssets,
+        assetChanges: 0,
+        assetLocked: false,
       },
     });
     navigation.goBack();
@@ -181,6 +190,24 @@ export function CreateQuestScreen() {
               )}
             </LinearGradient>
           </TouchableOpacity>
+
+          {/* AI suggested island icons */}
+          {suggestedAssets.length > 0 && (
+            <View>
+              <Text style={styles.label}>Island icon (AI picked)</Text>
+              <View style={styles.assetsRow}>
+                {suggestedAssets.map((emoji, idx) => (
+                  <View key={idx} style={[styles.assetChip, idx === 0 && styles.assetChipFirst]}>
+                    <Text style={styles.assetEmoji}>{emoji}</Text>
+                    {idx === 0 && <Text style={styles.assetDefault}>✓</Text>}
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.assetHint}>
+                First icon will be used. You can change it once on the map.
+              </Text>
+            </View>
+          )}
 
           {/* Milestones list */}
           {milestones.length > 0 && (
@@ -339,4 +366,15 @@ const styles = StyleSheet.create({
   },
   removeBtn: { padding: 4 },
   createBtn: { marginTop: Theme.spacing.lg },
+
+  assetsRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  assetChip: {
+    width: 52, height: 52, borderRadius: 14,
+    backgroundColor: Colors.card, borderWidth: 2,
+    borderColor: Colors.border, alignItems: 'center', justifyContent: 'center',
+  },
+  assetChipFirst: { borderColor: Colors.primary },
+  assetEmoji: { fontSize: 26 },
+  assetDefault: { fontSize: 9, color: Colors.primary, fontWeight: '800', position: 'absolute', bottom: 2, right: 4 },
+  assetHint: { fontSize: 11, color: Colors.textMuted, marginBottom: Theme.spacing.sm },
 });
