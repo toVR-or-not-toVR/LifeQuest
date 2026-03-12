@@ -26,7 +26,7 @@ import {
   generateMapPosition,
   getQuestColor,
 } from '../utils/questUtils';
-import { generateQuestMilestones, generateIslandAssets } from '../services/aiService';
+import { generateQuestMilestones, generateIslandAssets, generateIslandImage, generateMascotImage } from '../services/aiService';
 import { uuid } from '../utils/uuid';
 
 const CATEGORIES: QuestCategory[] = [
@@ -70,10 +70,12 @@ export function CreateQuestScreen() {
             },
           ];
 
+    const questId = uuid();
+
     dispatch({
       type: 'ADD_QUEST',
       payload: {
-        id: uuid(),
+        id: questId,
         title: title.trim(),
         description: description.trim(),
         category,
@@ -87,6 +89,16 @@ export function CreateQuestScreen() {
         assetLocked: false,
       },
     });
+
+    // Generate island image and mascot in background (non-blocking)
+    generateIslandImage(title.trim(), category)
+      .then((url) => dispatch({ type: 'UPDATE_QUEST_IMAGE', payload: { questId, islandImageUrl: url } }))
+      .catch((e) => console.warn('Island image generation failed:', e));
+
+    generateMascotImage(category)
+      .then((url) => dispatch({ type: 'UPDATE_QUEST_MASCOT', payload: { questId, questMascotUrl: url } }))
+      .catch((e) => console.warn('Mascot image generation failed:', e));
+
     navigation.goBack();
   }
 

@@ -299,6 +299,35 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    // ── Update quest island image (AI-generated) ──────────────────────────
+    case 'UPDATE_QUEST_IMAGE':
+      return {
+        ...state,
+        quests: state.quests.map((q) =>
+          q.id === action.payload.questId
+            ? { ...q, islandImageUrl: action.payload.islandImageUrl }
+            : q
+        ),
+      };
+
+    // ── Update quest mascot image (AI-generated) ──────────────────────────
+    case 'UPDATE_QUEST_MASCOT':
+      return {
+        ...state,
+        quests: state.quests.map((q) =>
+          q.id === action.payload.questId
+            ? { ...q, questMascotUrl: action.payload.questMascotUrl }
+            : q
+        ),
+      };
+
+    // ── Update user base mascot image ─────────────────────────────────────
+    case 'UPDATE_USER_MASCOT':
+      return {
+        ...state,
+        user: { ...state.user, mascotImageUrl: action.payload.mascotImageUrl },
+      };
+
     default:
       return state;
   }

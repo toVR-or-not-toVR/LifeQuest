@@ -1,8 +1,9 @@
-import { Milestone, Quest, QuestCategory } from '../types';
+import { Milestone, Quest, QuestCategory, Message, ChatPlan } from '../types';
 import { uuid } from '../utils/uuid';
 
-const API_KEY = 'AIzaSyDI-rKIFj0OpkLp6w4sUIlKwX6yol-LaNM';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+const IMAGEN_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
 
 async function callGemini(prompt: string): Promise<string> {
   const res = await fetch(GEMINI_URL, {
@@ -10,6 +11,26 @@ async function callGemini(prompt: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini API error ${res.status}`);
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+}
+
+async function callGeminiChat(
+  systemPrompt: string,
+  history: { role: 'user' | 'model'; text: string }[]
+): Promise<string> {
+  const res = await fetch(GEMINI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: history.map((m) => ({
+        role: m.role,
+        parts: [{ text: m.text }],
+      })),
     }),
   });
   if (!res.ok) throw new Error(`Gemini API error ${res.status}`);
@@ -72,7 +93,7 @@ Return ONLY raw JSON array, no markdown, no explanation.`;
   }));
 }
 
-// ─── Island asset generation ──────────────────────────────────────────────────
+// ─── Island asset generation (emoji fallback) ─────────────────────────────────
 
 const ASSET_FALLBACKS: Record<string, string[]> = {
   health:        ['💪', '🏋️', '🏃', '🥗', '❤️', '🏆'],
@@ -104,32 +125,161 @@ Return ONLY the raw JSON array, no markdown, no explanation.`;
   return ASSET_FALLBACKS[category] ?? ASSET_FALLBACKS.personal;
 }
 
-// ─── AI companion chat ────────────────────────────────────────────────────────
+// ─── Island image generation (Imagen 3) ──────────────────────────────────────
+
+const CATEGORY_ISLAND_THEMES: Record<QuestCategory, string> = {
+  health:        'gym equipment, dumbbells, running track, healthy food, green trees',
+  career:        'office building, briefcase, golden trophy, business charts',
+  education:     'books, graduation cap, telescope, school desk, diploma scroll',
+  personal:      'colorful flowers, art easel, guitar, journal, lanterns',
+  finance:       'gold coins pile, treasure chest, piggy bank, stock chart',
+  relationships: 'heart decorations, flowers, couple bench, pink blossoms',
+};
+
+export async function generateIslandImage(
+  questTitle: string,
+  category: QuestCategory
+): Promise<string> {
+  const themeElements = CATEGORY_ISLAND_THEMES[category] ?? 'colorful decorations';
+  const prompt = `Isometric 3D cartoon game art, small floating tropical island in blue ocean, featuring ${themeElements} related to "${questTitle}", lush green grass on top, rocky cliff base, palm trees, colorful flowers, vibrant game art style, no text no labels, soft warm lighting, high quality render, game icon style`;
+
+  const res = await fetch(IMAGEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1, aspectRatio: '1:1' },
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Imagen API error ${res.status}: ${errText}`);
+  }
+  const data = await res.json();
+  const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+  if (!b64) throw new Error('No image returned from Imagen API');
+  return `data:image/png;base64,${b64}`;
+}
+
+// ─── Mascot image generation (Imagen 3) ──────────────────────────────────────
+
+const CATEGORY_MASCOT_OUTFITS: Record<QuestCategory, string> = {
+  health:        'wearing bright gym clothes and sneakers, holding dumbbells',
+  career:        'wearing a sharp business suit with tie, holding a briefcase',
+  education:     'wearing a graduation cap and robe, holding a stack of books',
+  personal:      'wearing a colorful casual outfit with a scarf, holding flowers',
+  finance:       'wearing a top hat and golden waistcoat, holding a gold coin',
+  relationships: 'wearing a heart-patterned outfit, holding a bouquet of roses',
+};
+
+export async function generateMascotImage(
+  category: QuestCategory
+): Promise<string> {
+  const outfit = CATEGORY_MASCOT_OUTFITS[category] ?? 'wearing a colorful outfit';
+  const prompt = `Cute cartoon chibi purple otter character, white fluffy belly, round eyes, small ears, ${outfit}, standing upright friendly pose, bright smile, vibrant colors, game character art style, clean simple background, full body, high quality illustration`;
+
+  const res = await fetch(IMAGEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1, aspectRatio: '1:1' },
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Imagen API error ${res.status}: ${errText}`);
+  }
+  const data = await res.json();
+  const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+  if (!b64) throw new Error('No mascot image returned from Imagen API');
+  return `data:image/png;base64,${b64}`;
+}
+
+// ─── AI companion chat (proactive life coach) ─────────────────────────────────
+
+const COACH_SYSTEM_PROMPT = `You are Lumi — a proactive, warm, and highly practical AI life coach inside a gamified goal-achievement app. Your role is to help users turn vague dreams into concrete action plans and actually start them.
+
+BEHAVIOR RULES:
+1. When a user mentions ANY goal or desire, immediately create a specific step-by-step action plan — don't ask permission, just do it.
+2. Be concrete and practical. For travel: list visa requirements, documents needed, embassy contacts. For fitness: suggest specific workout schedules. For career: list specific skills, courses, certifications.
+3. If the user shares context (location, situation, constraints), update the plan to reflect it.
+4. Keep responses conversational and warm — use 1-2 emojis max per message.
+5. After creating a plan, ask ONE clarifying question to refine it further.
+6. ALWAYS detect the language the user writes in and respond in the SAME language.
+
+RESPONSE FORMAT:
+You MUST always respond with valid JSON (no markdown wrapper):
+{
+  "message": "your conversational response here",
+  "plan": {
+    "questTitle": "Short title for the goal",
+    "category": "one of: health|career|education|personal|finance|relationships",
+    "steps": ["Step 1", "Step 2", ...],
+    "newStepIndex": null
+  }
+}
+
+If this is a continuation and you add a new step, set "newStepIndex" to the 0-based index of the new step.
+If no plan is relevant (e.g. motivational chat, question about progress), return "plan": null.
+Steps should be 5-8 items, short and actionable (max 60 chars each).
+CRITICAL: Return ONLY the JSON object. No markdown, no code blocks, no extra text.`;
 
 export async function chatWithCompanion(
-  message: string,
+  messages: Message[],
   questContext: Quest[]
-): Promise<string> {
-  try {
-    const active = questContext.filter((q) => !q.completedAt).length;
-    const done = questContext.filter((q) => q.completedAt).length;
-    const prompt = `You are Lumi, a warm and encouraging AI companion helping users achieve life goals in a gamified adventure app.
-User stats: ${active} active quests, ${done} completed quests.
-User says: "${message}"
-Reply in 1-2 short sentences. Be warm, motivating, use 1 emoji. Max 180 characters.
-Reply in the same language the user wrote in.`;
+): Promise<{ message: string; plan: ChatPlan | null }> {
+  const active = questContext.filter((q) => !q.completedAt).length;
+  const done = questContext.filter((q) => q.completedAt).length;
+  const questSummary = questContext
+    .filter((q) => !q.completedAt)
+    .map((q) => {
+      const completedCount = q.milestones.filter((m) => m.completed).length;
+      return `"${q.title}" (${completedCount}/${q.milestones.length} milestones done)`;
+    })
+    .join(', ');
 
-    const reply = await callGemini(prompt);
-    return reply.trim().slice(0, 350);
+  const contextNote = `User context: ${active} active quests, ${done} completed. Active: ${questSummary || 'none yet'}.`;
+
+  // Build conversation history for Gemini (skip system messages)
+  const history = messages.map((m) => ({
+    role: m.role === 'user' ? 'user' as const : 'model' as const,
+    // For model messages that had a plan, include a simplified version so context is preserved
+    text: m.role === 'assistant' && m.plan
+      ? JSON.stringify({ message: m.content, plan: m.plan })
+      : m.content,
+  }));
+
+  // Inject context into the last user message
+  if (history.length > 0 && history[history.length - 1].role === 'user') {
+    history[history.length - 1] = {
+      role: 'user',
+      text: `${history[history.length - 1].text}\n\n[${contextNote}]`,
+    };
+  }
+
+  try {
+    const raw = await callGeminiChat(COACH_SYSTEM_PROMPT, history);
+    const parsed = parseJSON<{ message: string; plan: ChatPlan | null }>(raw);
+    if (parsed && typeof parsed.message === 'string') {
+      return {
+        message: parsed.message,
+        plan: parsed.plan ?? null,
+      };
+    }
+    // If JSON parsing failed but we got text, return as plain message
+    return { message: raw.trim().slice(0, 500), plan: null };
   } catch (e) {
     console.warn('Gemini chatWithCompanion failed:', e);
     const fallbacks = [
-      `That's the spirit! You have ${questContext.filter((q) => !q.completedAt).length} active quests — keep going! 🌟`,
-      `Every legend starts with a single step. You're doing amazing! ⚔️`,
-      `I believe in you! Your journey is unique and every effort counts. 💪`,
-      `The map grows with every milestone you conquer. Keep exploring! 🗺️`,
+      `Tell me about your goal and I'll build you a step-by-step plan right away! 🗺️`,
+      `What would you like to achieve? Share your dream and let's turn it into action! 🚀`,
+      `I'm here to help you crush your goals! What are you working towards? 💪`,
     ];
-    return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+    return {
+      message: fallbacks[Math.floor(Math.random() * fallbacks.length)],
+      plan: null,
+    };
   }
 }
 

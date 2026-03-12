@@ -34,10 +34,12 @@ export interface Quest {
   completedAt?: string;
   mapPosition: { x: number; y: number };
   color: string;
-  mapIcon?: string;          // current displayed icon
+  mapIcon?: string;           // current displayed icon (emoji fallback)
+  islandImageUrl?: string;    // AI-generated island image (base64 data URI)
+  questMascotUrl?: string;    // AI-generated mascot image for this quest
   suggestedAssets?: string[]; // Gemini-generated asset options
-  assetChanges?: number;     // times user has changed the icon
-  assetLocked?: boolean;     // true after 1 user change
+  assetChanges?: number;      // times user has changed the icon
+  assetLocked?: boolean;      // true after 1 user change
 }
 
 export interface User {
@@ -52,6 +54,7 @@ export interface User {
   totalQuestsCompleted: number;
   badges: Badge[];
   buddyMascotId: string;
+  mascotImageUrl?: string;    // AI-generated base mascot image
   buddyEquipped: {
     hat?: string;
     outfit?: string;
@@ -59,11 +62,19 @@ export interface User {
   };
 }
 
+export interface ChatPlan {
+  questTitle: string;
+  category: QuestCategory;
+  steps: string[];
+  newStepIndex?: number; // index of newly added step (for highlighting)
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  plan?: ChatPlan; // optional plan attached to assistant messages
 }
 
 export interface Notification {
@@ -98,4 +109,7 @@ export type AppAction =
   | { type: 'CHECK_STREAK' }
   | { type: 'SET_BUDDY_MASCOT'; payload: { mascotId: string } }
   | { type: 'EQUIP_BUDDY_ITEM'; payload: { slot: 'hat' | 'outfit' | 'accessory'; itemId: string | undefined } }
-  | { type: 'UPDATE_QUEST_ICON'; payload: { questId: string; icon: string } };
+  | { type: 'UPDATE_QUEST_ICON'; payload: { questId: string; icon: string } }
+  | { type: 'UPDATE_QUEST_IMAGE'; payload: { questId: string; islandImageUrl: string } }
+  | { type: 'UPDATE_QUEST_MASCOT'; payload: { questId: string; questMascotUrl: string } }
+  | { type: 'UPDATE_USER_MASCOT'; payload: { mascotImageUrl: string } };

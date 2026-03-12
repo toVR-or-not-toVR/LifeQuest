@@ -13,16 +13,69 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { ScreenWrapper } from '../components/common/ScreenWrapper';
 import { Colors } from '../constants/colors';
 import { Theme } from '../constants/theme';
 import { useAppContext } from '../context/AppContext';
-import { Message } from '../types';
-import { chatWithCompanion } from '../services/aiService';
+import { Message, ChatPlan, QuestCategory } from '../types';
+import { chatWithCompanion, generateIslandImage, generateMascotImage } from '../services/aiService';
 import { uuid } from '../utils/uuid';
 import { formatRelativeTime } from '../utils/dateUtils';
+import { getCategoryEmoji, generateMapPosition, getQuestColor } from '../utils/questUtils';
 
-function MessageBubble({ message }: { message: Message }) {
+// ─── Plan card embedded in assistant message ──────────────────────────────────
+
+function PlanCard({ plan, onStartJourney }: { plan: ChatPlan; onStartJourney: (plan: ChatPlan) => void }) {
+  return (
+    <View style={planStyles.card}>
+      <View style={planStyles.header}>
+        <Text style={planStyles.headerIcon}>📋</Text>
+        <Text style={planStyles.headerText}>Here's your plan:</Text>
+      </View>
+      {plan.steps.map((step, i) => {
+        const isNew = plan.newStepIndex === i;
+        return (
+          <View key={i} style={planStyles.step}>
+            <View style={[planStyles.checkbox, isNew && planStyles.checkboxNew]} />
+            <Text style={[planStyles.stepText, isNew && planStyles.stepTextNew]}>
+              {i + 1}. {step}
+            </Text>
+            {isNew && (
+              <View style={planStyles.newBadge}>
+                <Text style={planStyles.newBadgeText}>NEW</Text>
+              </View>
+            )}
+          </View>
+        );
+      })}
+      <TouchableOpacity
+        style={planStyles.startBtn}
+        onPress={() => onStartJourney(plan)}
+        activeOpacity={0.85}
+      >
+        <LinearGradient
+          colors={Colors.gradientPrimary}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={planStyles.startBtnGradient}
+        >
+          <Text style={planStyles.startBtnText}>🚀  Start Journey</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Message bubble ───────────────────────────────────────────────────────────
+
+function MessageBubble({
+  message,
+  onStartJourney,
+}: {
+  message: Message;
+  onStartJourney: (plan: ChatPlan) => void;
+}) {
   const isUser = message.role === 'user';
   const slideAnim = useRef(new Animated.Value(isUser ? 20 : -20)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -47,19 +100,26 @@ function MessageBubble({ message }: { message: Message }) {
           <Text style={styles.companionEmoji}>✨</Text>
         </View>
       )}
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
-        {isUser ? (
-          <Text style={styles.bubbleTextUser}>{message.content}</Text>
-        ) : (
-          <Text style={styles.bubbleTextAssistant}>{message.content}</Text>
+      <View style={styles.bubbleColumn}>
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+          {isUser ? (
+            <Text style={styles.bubbleTextUser}>{message.content}</Text>
+          ) : (
+            <Text style={styles.bubbleTextAssistant}>{message.content}</Text>
+          )}
+          <Text style={[styles.bubbleTime, isUser ? styles.bubbleTimeUser : styles.bubbleTimeAssistant]}>
+            {formatRelativeTime(message.timestamp)}
+          </Text>
+        </View>
+        {!isUser && message.plan && (
+          <PlanCard plan={message.plan} onStartJourney={onStartJourney} />
         )}
-        <Text style={[styles.bubbleTime, isUser ? styles.bubbleTimeUser : styles.bubbleTimeAssistant]}>
-          {formatRelativeTime(message.timestamp)}
-        </Text>
       </View>
     </Animated.View>
   );
 }
+
+// ─── Typing indicator ─────────────────────────────────────────────────────────
 
 function TypingIndicator() {
   const dot1 = useRef(new Animated.Value(0)).current;
@@ -100,17 +160,20 @@ function TypingIndicator() {
   );
 }
 
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
 export function ChatScreen() {
   const { state, dispatch } = useAppContext();
+  const navigation = useNavigation<any>();
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const QUICK_PROMPTS = [
-    "What should I do next?",
-    "I need motivation!",
-    "How's my progress?",
-    "Any tips for me?",
+    "I want to travel to France 🗼",
+    "Help me get fit 💪",
+    "I want to save money 💰",
+    "Help me learn a new skill 📚",
   ];
 
   async function sendMessage(text: string) {
@@ -128,17 +191,72 @@ export function ChatScreen() {
 
     setTyping(true);
     try {
-      const response = await chatWithCompanion(trimmed, state.quests);
+      const allMessages = [...state.messages, userMsg];
+      const result = await chatWithCompanion(allMessages, state.quests);
       const assistantMsg: Message = {
         id: uuid(),
         role: 'assistant',
-        content: response,
+        content: result.message,
         timestamp: new Date().toISOString(),
+        plan: result.plan ?? undefined,
       };
       dispatch({ type: 'ADD_MESSAGE', payload: assistantMsg });
     } finally {
       setTyping(false);
     }
+  }
+
+  async function handleStartJourney(plan: ChatPlan) {
+    const questId = uuid();
+    const category = (plan.category as QuestCategory) ?? 'personal';
+
+    // Generate milestones from plan steps
+    const milestones = plan.steps.map((step, i) => ({
+      id: uuid(),
+      title: step.slice(0, 60),
+      description: '',
+      completed: false,
+      xpReward: [50, 75, 100, 100, 150, 200, 300, 500][Math.min(i, 7)],
+    }));
+
+    dispatch({
+      type: 'ADD_QUEST',
+      payload: {
+        id: questId,
+        title: plan.questTitle,
+        description: '',
+        category,
+        milestones,
+        createdAt: new Date().toISOString(),
+        mapPosition: generateMapPosition(state.quests),
+        color: getQuestColor(category),
+        mapIcon: getCategoryEmoji(category),
+        suggestedAssets: [],
+        assetChanges: 0,
+        assetLocked: false,
+      },
+    });
+
+    // Generate images in background
+    generateIslandImage(plan.questTitle, category)
+      .then((url) => dispatch({ type: 'UPDATE_QUEST_IMAGE', payload: { questId, islandImageUrl: url } }))
+      .catch((e) => console.warn('Island image failed:', e));
+
+    generateMascotImage(category)
+      .then((url) => dispatch({ type: 'UPDATE_QUEST_MASCOT', payload: { questId, questMascotUrl: url } }))
+      .catch((e) => console.warn('Mascot image failed:', e));
+
+    // Confirm in chat
+    const confirmMsg: Message = {
+      id: uuid(),
+      role: 'assistant',
+      content: `Quest "${plan.questTitle}" created! 🎉 Head to the Map to see your island and start your adventure!`,
+      timestamp: new Date().toISOString(),
+    };
+    dispatch({ type: 'ADD_MESSAGE', payload: confirmMsg });
+
+    // Navigate to map
+    navigation.navigate('Map' as never);
   }
 
   useEffect(() => {
@@ -165,7 +283,7 @@ export function ChatScreen() {
           <View>
             <Text style={styles.headerName}>Lumi</Text>
             <Text style={styles.headerStatus}>
-              {typing ? 'typing...' : 'Your AI companion'}
+              {typing ? 'typing...' : 'Your AI life coach'}
             </Text>
           </View>
         </LinearGradient>
@@ -175,7 +293,9 @@ export function ChatScreen() {
           ref={flatListRef}
           data={state.messages}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }: { item: Message }) => <MessageBubble message={item} />}
+          renderItem={({ item }: { item: Message }) => (
+            <MessageBubble message={item} onStartJourney={handleStartJourney} />
+          )}
           contentContainerStyle={styles.messagesList}
           ListFooterComponent={typing ? <TypingIndicator /> : null}
           showsVerticalScrollIndicator={false}
@@ -204,7 +324,7 @@ export function ChatScreen() {
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder="Message Lumi..."
+            placeholder="Tell me your goal..."
             placeholderTextColor={Colors.textMuted}
             multiline
             maxLength={500}
@@ -235,6 +355,77 @@ export function ChatScreen() {
     </ScreenWrapper>
   );
 }
+
+// ─── Plan card styles ─────────────────────────────────────────────────────────
+
+const planStyles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.background,
+    borderRadius: Theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Theme.spacing.md,
+    marginTop: Theme.spacing.sm,
+    gap: 6,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  headerIcon: { fontSize: 16 },
+  headerText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.bold,
+    color: Colors.textPrimary,
+  },
+  step: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: Colors.textMuted,
+    flexShrink: 0,
+  },
+  checkboxNew: { borderColor: Colors.primary },
+  stepText: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  stepTextNew: { color: Colors.primary, fontWeight: Theme.fontWeight.semibold },
+  newBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  newBadgeText: { fontSize: 9, color: Colors.textPrimary, fontWeight: '800' },
+  startBtn: {
+    marginTop: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.pill,
+    overflow: 'hidden',
+  },
+  startBtnGradient: {
+    paddingVertical: Theme.spacing.md,
+    alignItems: 'center',
+  },
+  startBtnText: {
+    color: Colors.textPrimary,
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.bold,
+  },
+});
+
+// ─── Main styles ──────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   header: {
@@ -274,12 +465,13 @@ const styles = StyleSheet.create({
   },
   bubbleWrap: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     gap: Theme.spacing.sm,
     marginVertical: 2,
   },
   bubbleLeft: { justifyContent: 'flex-start' },
   bubbleRight: { justifyContent: 'flex-end', flexDirection: 'row-reverse' },
+  bubbleColumn: { flex: 1, maxWidth: '85%' },
   companionAvatar: {
     width: 32,
     height: 32,
@@ -290,10 +482,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    marginTop: 2,
   },
   companionEmoji: { fontSize: 16 },
   bubble: {
-    maxWidth: '75%',
     borderRadius: Theme.borderRadius.lg,
     padding: Theme.spacing.md,
     gap: 4,
@@ -301,6 +493,7 @@ const styles = StyleSheet.create({
   bubbleUser: {
     backgroundColor: Colors.primary,
     borderBottomRightRadius: 4,
+    alignSelf: 'flex-end',
   },
   bubbleAssistant: {
     backgroundColor: Colors.card,

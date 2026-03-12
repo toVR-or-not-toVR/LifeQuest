@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -292,11 +293,21 @@ export function MapScreen() {
             </Svg>
 
             {/* Pet mascot at last completed milestone */}
-            {petDot && (
-              <Text style={[styles.petEmoji, { left: petDot.x - 12, top: petDot.y - 20 }]}>
-                {petEmoji}
-              </Text>
-            )}
+            {petDot && (() => {
+              const activeQuest = quests.find((q) => q.milestones.some((m) => m.completed) && !q.completedAt);
+              const mascotUrl = activeQuest?.questMascotUrl ?? state.user.mascotImageUrl;
+              return mascotUrl ? (
+                <Image
+                  source={{ uri: mascotUrl }}
+                  style={[styles.petImage, { left: petDot.x - 28, top: petDot.y - 52 }]}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={[styles.petEmoji, { left: petDot.x - 12, top: petDot.y - 20 }]}>
+                  {petEmoji}
+                </Text>
+              );
+            })()}
 
             {/* START island */}
             <View style={[styles.startWrapper, { left: centerX - START_R, top: centerY - START_R }]}>
@@ -332,11 +343,21 @@ export function MapScreen() {
                   ]}
                   activeOpacity={0.85}
                 >
-                  <View style={[styles.islandBase, isFocused && styles.islandFocused]}>
-                    <View style={[styles.islandSurface, allDone && styles.islandDone]}>
-                      <Text style={styles.islandEmoji}>{icon}</Text>
+                  {quest.islandImageUrl ? (
+                    <View style={[styles.islandBase, isFocused && styles.islandFocused]}>
+                      <Image
+                        source={{ uri: quest.islandImageUrl }}
+                        style={[styles.islandImage, allDone && styles.islandDone]}
+                        resizeMode="cover"
+                      />
                     </View>
-                  </View>
+                  ) : (
+                    <View style={[styles.islandBase, isFocused && styles.islandFocused]}>
+                      <View style={[styles.islandSurface, allDone && styles.islandDone]}>
+                        <Text style={styles.islandEmoji}>{icon}</Text>
+                      </View>
+                    </View>
+                  )}
                   {quest.assetLocked && (
                     <Text style={styles.lockBadge}>🔒</Text>
                   )}
@@ -460,6 +481,12 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
+  petImage: {
+    position: 'absolute',
+    width: 56,
+    height: 56,
+    zIndex: 20,
+  },
 
   // START island
   startWrapper: { position: 'absolute', width: START_R * 2, alignItems: 'center' },
@@ -496,7 +523,10 @@ const styles = StyleSheet.create({
     width: ISLAND_TOP_R * 2, height: ISLAND_TOP_R * 2, borderRadius: ISLAND_TOP_R,
     backgroundColor: '#F2E0B0', alignItems: 'center', justifyContent: 'center',
   },
-  islandDone: { backgroundColor: '#B8E890' },
+  islandImage: {
+    width: ISLAND_R * 2, height: ISLAND_R * 2, borderRadius: ISLAND_R,
+  },
+  islandDone: { backgroundColor: '#B8E890', opacity: 0.85 },
   islandEmoji: { fontSize: 26 },
   lockBadge: {
     position: 'absolute', top: -4, right: -4,
